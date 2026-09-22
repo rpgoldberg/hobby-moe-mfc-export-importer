@@ -3,51 +3,32 @@
 // 2. Be on the collection's page, logged in. 3. Paste this file. 4. MFC_IMPORT.run()  (Owned by default; run({ status: 'Wished' }) for another list)
 // Stop any time with MFC_IMPORT.stop(). Progress is in localStorage under 'mfc_import_progress'; run() resumes from it.
 (() => {
-  const cfg = { batch: 1, delayMs: 150, searchMs: 500, timeoutMs: 4000, statuses: ['Owned'], start: null, verbose: true };
+  const cfg = {
+    batch: 1, delayMs: 150, searchMs: 500, timeoutMs: 4000, statuses: ['Owned'], start: null, verbose: true,
+    searchUrl: 'https://search.hobby.moe/indexes/items/search',
+    typeId: 'rh77ksk7spb166dtj2s5qnjbkn801k5s', // the item type the Add Items dialog searches (from its own request)
+  };
   const log = [];
   const last = { jan: '', hits: [], rows: [] };
-  let stopFlag = false, running = false;
+  let stopFlag = false, running = false, barcodeFilterable = null;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const txt = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
-  const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  // MFC title: "[Level] - Series - Character - Scale - Version (Maker)" -> segments; the character segment must match a row
-  const titleSegs = (title) => {
-    const t = String(title).replace(/^\[[^\]]*\]\s*-\s*/, '').replace(/\s*\([^)]*\)\s*$/, '');
-    return t.split(/\s+-\s+/).map(norm).filter((x) => x.length > 1);
-  };
-  const matchByTitle = (rows, title) => {
-    const segs = titleSegs(title); if (!segs.length) return { pick: null, top: [] };
-    const charSeg = segs.length > 1 ? segs[1] : segs[0];
-    const scored = rows.map((r) => { const n = norm(r.text); return { r, n: segs.filter((g) => n.includes(g)).length, ch: n.includes(charSeg) }; }).filter((x) => x.ch && x.n > 0);
-    const best = Math.max(0, ...scored.map((x) => x.n));
-    const top = scored.filter((x) => x.n === best);
-    return { pick: top.length === 1 ? top[0].r : null, top: top.map((x) => x.r.text.slice(0, 80)) };
-  };
+  const norm = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-  // --- capture the site's own search responses (fetch and XHR) so a row can be matched by barcode
-  const captures = [];
-  const remember = (url, body, text) => {
-    try {
-      const j = JSON.parse(text);
-      if (j && Array.isArray(j.hits)) captures.push({ at: Date.now(), url: String(url), body: body ? String(body) : '', hits: j.hits });
-      if (captures.length > 50) captures.splice(0, captures.length - 50);
-    } catch (_) {}
+  // --- the site's own search endpoint, called the way the dialog calls it (no auth header; the page origin is what gets it through)
+  const post = async (body) => {
+    const res = await fetch(cfg.searchUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(j.hits)) throw new Error('search ' + res.status + ' ' + (j.message || ''));
+    return j.hits;
   };
-  if (!window.__mfcFetchPatched) {
-    window.__mfcFetchPatched = true;
-    const of = window.fetch;
-    window.fetch = async function (input, init) {
-      const res = await of.apply(this, arguments);
-      try { res.clone().text().then((t) => remember(typeof input === 'string' ? input : input.url, init && init.body, t)); } catch (_) {}
-      return res;
-    };
-    const oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function (m, u) { this.__mfcUrl = u; return oo.apply(this, arguments); };
-    XMLHttpRequest.prototype.send = function (b) {
-      this.addEventListener('load', () => { try { remember(this.__mfcUrl, b, this.responseText); } catch (_) {} });
-      return os.apply(this, arguments);
-    };
-  }
+  const lookup = async (jan) => {
+    if (barcodeFilterable !== false) {
+      try { const hits = await post({ q: '', filter: `barcode = "${jan}"`, limit: 10 }); barcodeFilterable = true; return hits; }
+      catch (e) { if (barcodeFilterable === true) throw e; barcodeFilterable = false; }
+    }
+    return (await post({ q: jan, matchingStrategy: 'all', limit: 50 })).filter((h) => h.barcode === jan);
+  };
 
   // --- DOM helpers (matched by role and text, never by class)
   const openDialog = () => document.querySelector('[role="dialog"][data-state="open"]');
@@ -73,7 +54,6 @@
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true }));
   };
-
   const ensureDialog = async () => {
     let d = openDialog();
     if (d && searchInput(d)) return d;
@@ -83,51 +63,44 @@
     if (!d) throw new Error('dialog did not open');
     return d;
   };
-
-  const search = async (d, jan) => {
-    const t0 = Date.now();
+  const typeAndWait = async (d, jan) => {
     const before = rowsOf(d).map((r) => r.text).join('|');
     setInput(searchInput(d), jan);
-    const cap = await waitFor(() => captures.find((c) => c.at > t0 && (c.body.includes(jan) || c.url.includes(jan) || c.hits.some((h) => h.barcode === jan))), cfg.searchMs);
     await waitFor(() => { const now = rowsOf(d).map((r) => r.text).join('|'); return now && now !== before; }, cfg.searchMs);
     await sleep(150);
-    return cap ? cap.hits : null;
+    return rowsOf(d);
+  };
+  // the row whose text carries the hit's name (rows read "<name><maker>Add"); falls back to the MFC title's character segment
+  const rowFor = (rows, hit, title) => {
+    const byName = rows.filter((r) => norm(r.text).includes(norm(hit.name)));
+    if (byName.length === 1) return byName[0];
+    const segs = String(title).replace(/^\[[^\]]*\]\s*-\s*/, '').replace(/\s*\([^)]*\)\s*$/, '').split(/\s+-\s+/).map(norm).filter((x) => x.length > 1);
+    const ch = segs.length > 1 ? segs[1] : segs[0];
+    const scored = rows.map((r) => { const n = norm(r.text); return { r, n: segs.filter((g) => n.includes(g)).length, ch: n.includes(ch) }; }).filter((x) => x.ch && x.n > 0);
+    const best = Math.max(0, ...scored.map((x) => x.n)); const top = scored.filter((x) => x.n === best);
+    return top.length === 1 ? top[0].r : null;
   };
 
   const one = async (item) => {
+    const hits = await lookup(item.jan);
+    Object.assign(last, { jan: item.jan, hits, rows: [] });
+    const out = (outcome, hit) => ({ id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: hit ? hit.name : '' });
+    if (!hits.length) return out('not-found');
+    const usable = hits.filter((h) => !h.adultItem && (!cfg.typeId || h.typeId === cfg.typeId));
+    if (!usable.length) return out(hits.some((h) => h.adultItem) ? 'adult-hidden' : 'other-type', hits[0]);
     const d = await ensureDialog();
-    const hits = await search(d, item.jan);
-    const exact = hits ? hits.filter((h) => h.barcode === item.jan) : null;
-    const rows = rowsOf(d);
-    Object.assign(last, { jan: item.jan, hits: hits || [], rows: rows.map((r) => r.text) });
-    const findRow = (h) => {
-      const keys = [h.name, h.characterName, h.manufacturerName, h.originName, h.version].filter((k) => k && String(k).length > 2).map(String);
-      const scored = rows.map((r) => ({ r, n: keys.filter((k) => r.text.includes(k)).length }));
-      const best = Math.max(0, ...scored.map((x) => x.n));
-      const top = scored.filter((x) => x.n === best && best > 0);
-      return top.length === 1 ? top[0].r : null;
-    };
-    let pick = null, outcome;
-    if (exact && exact.length === 1) {
-      pick = (rows.length === 1 ? rows[0] : null) || findRow(exact[0]);
-      outcome = pick ? 'add' : 'already-in-collection?';
-    } else if (exact && exact.length > 1) {
-      const vis = exact.map(findRow).filter(Boolean);
-      pick = vis.length === 1 ? vis[0] : null;
-      outcome = pick ? 'add' : 'ambiguous:' + exact.map((h) => h.name + (h.version ? ' [' + h.version + ']' : '')).join(' | ');
-    } else if (exact && exact.length === 0) {
-      outcome = hits.length ? 'no-exact-barcode' : 'not-found';
-    } else {
-      const m = matchByTitle(rows, item.title);
-      pick = m.pick || (rows.length === 1 ? rows[0] : null);
-      outcome = pick ? 'add' : rows.length ? (m.top.length > 1 ? 'ambiguous: ' + m.top.join(' | ') : 'no-title-match') : 'not-found-or-added';
+    const rows = await typeAndWait(d, item.jan);
+    last.rows = rows.map((r) => r.text);
+    let pick = null;
+    for (const h of usable) { pick = rowFor(rows, h, item.title); if (pick) { var hit = h; break; } }
+    if (!pick) {
+      if (cfg.verbose) console.log(`   hits=${JSON.stringify(usable.map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
+      return out(rows.length ? 'already-in-collection?' : 'no-rows-shown', usable[0]);
     }
-    if (pick) {
-      if (pick.state === 'Remove') outcome = 'already-selected';
-      else { pick.button.click(); await waitFor(() => footer(d).selected > 0, 1500); }
-    }
-    if (cfg.verbose && outcome !== 'add') console.log(`   hits=${hits ? hits.length : 'none captured'} exact=${JSON.stringify((exact || []).map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
-    return { id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: exact && exact[0] ? exact[0].name : '' };
+    if (pick.state === 'Remove') return out('already-selected', hit);
+    pick.button.click();
+    await waitFor(() => footer(d).selected > 0, 1500);
+    return out('add', hit);
   };
 
   const commit = async () => {
@@ -149,34 +122,32 @@
     const items = (window.MFC_ITEMS || []).filter((i) => !cfg.statuses || cfg.statuses.includes(i.status));
     if (!items.length) throw new Error('window.MFC_ITEMS is empty: paste mfc-items.js first');
     console.log(`importing ${items.length} items (${cfg.statuses ? cfg.statuses.join('/') : 'all statuses'})`);
-    running = true;
-    let i = cfg.start ?? Number(localStorage.getItem('mfc_import_progress') || 0);
-    stopFlag = false;
-    let pending = 0;
+    running = true; stopFlag = false;
+    let i = cfg.start ?? Number(localStorage.getItem('mfc_import_progress') || 0), pending = 0;
     try {
-    for (; i < items.length && !stopFlag; i++) {
-      const it = items[i];
-      if (!it.jan) { log.push({ ...it, outcome: 'no-barcode' }); continue; }
-      let r;
-      try { r = await one(it); } catch (e) { r = { ...it, outcome: 'error: ' + e.message }; }
-      log.push(r); console.log(`${i + 1}/${items.length} ${r.outcome} | mfc ${it.id} | ${it.title}`);
-      if (r.outcome === 'add' || r.outcome.startsWith('add (')) pending++;
-      if (pending >= cfg.batch || (pending === 0 && openDialog())) { await commit(); pending = 0; }
-      localStorage.setItem('mfc_import_progress', String(i + 1));
-      await sleep(cfg.delayMs);
-    }
-    if (pending) await commit();
+      for (; i < items.length && !stopFlag; i++) {
+        const it = items[i];
+        if (!it.jan) { log.push({ ...it, outcome: 'no-barcode' }); continue; }
+        let r;
+        try { r = await one(it); } catch (e) { r = { ...it, outcome: 'error: ' + e.message }; }
+        log.push(r); console.log(`${i + 1}/${items.length} ${r.outcome} | mfc ${it.id} | ${it.title}`);
+        if (r.outcome === 'add') pending++;
+        if (pending >= cfg.batch || (pending === 0 && openDialog())) { await commit(); pending = 0; }
+        localStorage.setItem('mfc_import_progress', String(i + 1));
+        await sleep(cfg.delayMs);
+      }
+      if (pending) await commit();
     } finally { running = false; }
-    const added = log.filter((r) => r.outcome.startsWith('add')), failed = log.filter((r) => !r.outcome.startsWith('add'));
+    const added = log.filter((r) => r.outcome === 'add'), failed = log.filter((r) => r.outcome !== 'add');
     console.log(`done: ${added.length} added, ${failed.length} not added${stopFlag ? ' (stopped)' : ''}`);
     console.table(failed.map((r) => ({ mfc: r.id, title: r.title, jan: r.jan, outcome: r.outcome })));
     return log;
   };
 
   window.MFC_IMPORT = {
-    run, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, captures, last,
+    run, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, last, lookup,
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT ready: MFC_IMPORT.run()  |  MFC_IMPORT.stop()  |  copy(MFC_IMPORT.csv()) for the result list');
+  console.log('MFC_IMPORT ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();

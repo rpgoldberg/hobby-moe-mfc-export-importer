@@ -27,18 +27,18 @@ Start with a few items, then `stop()`, before letting it run through.
 
 ## What it does per item
 
-Opens the Add Items dialog, types the barcode into the search box, picks the row that matches the MFC title (series, character, scale, version), clicks its Add, then clicks Add 1 Item. When the site's search response can be read, the exact barcode hit is used instead. When nothing was selected it clicks Cancel.
+Looks the barcode up on the site's own search endpoint (the one the dialog uses), from inside the page. If exactly that barcode exists, is not flagged adult and is of the type the dialog lists, it opens the Add Items dialog, types the barcode, clicks Add on the row carrying the hit's name, then clicks Add 1 Item. When nothing was selected it clicks Cancel. Items that cannot be added are skipped without touching the dialog.
 
 Outcomes in the result table:
 
 | outcome | meaning |
 |---|---|
 | `add` | selected and committed |
-| `already-in-collection?` | the search found the barcode but the site showed no row (it hides items already in the collection) |
-| `not-found` | no search hit |
-| `no-exact-barcode` | hits, but none with that exact barcode |
-| `no-title-match` | rows came back but none contained the MFC character name |
-| `ambiguous: …` | more than one item on the site shares the barcode; names listed, add by hand |
+| `not-found` | no item on the site with that barcode |
+| `adult-hidden` | the item exists but is flagged adult, and the dialog's search excludes adult items; add it by hand |
+| `other-type` | the item exists under a type the dialog does not list |
+| `already-in-collection?` | the item exists but the dialog showed no row for it (it hides items already in the collection) |
+| `no-rows-shown` | the item exists but the dialog showed nothing within the wait |
 | `no-barcode` | the MFC row has no barcode; search by title by hand |
 
 ## Knobs
