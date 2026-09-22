@@ -1,11 +1,12 @@
 // hobby.moe collection import from an MFC export.
 // 1. Paste mfc-items.js first (defines window.MFC_ITEMS).
-// 2. Be on the collection's page, logged in. 3. Paste this file. 4. Optionally: MFC_IMPORT.run({ start: 0, statuses: ['Owned'] })
+// 2. Be on the collection's page, logged in. 3. Paste this file. 4. MFC_IMPORT.run()  (Owned by default; run({ status: 'Wished' }) for another list)
 // Stop any time with MFC_IMPORT.stop(). Progress is in localStorage under 'mfc_import_progress'; run() resumes from it.
 (() => {
-  const cfg = { batch: 1, delayMs: 250, timeoutMs: 8000, statuses: null, start: null };
+  const cfg = { batch: 1, delayMs: 250, timeoutMs: 8000, statuses: ['Owned'], start: null, verbose: true };
   const log = [];
-  let stopFlag = false;
+  const last = { jan: '', hits: [], rows: [] };
+  let stopFlag = false, running = false;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const txt = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
 
@@ -79,12 +80,20 @@
     const hits = await search(d, item.jan);
     const exact = hits ? hits.filter((h) => h.barcode === item.jan) : null;
     const rows = rowsOf(d);
+    Object.assign(last, { jan: item.jan, hits: hits || [], rows: rows.map((r) => r.text) });
+    const findRow = (h) => {
+      const keys = [h.name, h.characterName, h.manufacturerName, h.originName, h.version].filter((k) => k && String(k).length > 2).map(String);
+      const scored = rows.map((r) => ({ r, n: keys.filter((k) => r.text.includes(k)).length }));
+      const best = Math.max(0, ...scored.map((x) => x.n));
+      const top = scored.filter((x) => x.n === best && best > 0);
+      return top.length === 1 ? top[0].r : null;
+    };
     let pick = null, outcome;
     if (exact && exact.length === 1) {
-      pick = rows.find((r) => r.text.includes(exact[0].name)) || (rows.length === 1 ? rows[0] : null);
+      pick = findRow(exact[0]) || (rows.length === 1 ? rows[0] : null);
       outcome = pick ? 'add' : 'already-in-collection?';
     } else if (exact && exact.length > 1) {
-      const vis = rows.filter((r) => exact.some((h) => r.text.includes(h.name)));
+      const vis = exact.map(findRow).filter(Boolean);
       pick = vis.length === 1 ? vis[0] : null;
       outcome = pick ? 'add' : 'ambiguous:' + exact.map((h) => h.name + (h.version ? ' [' + h.version + ']' : '')).join(' | ');
     } else if (exact && exact.length === 0) {
@@ -97,6 +106,7 @@
       if (pick.state === 'Remove') outcome = 'already-selected';
       else { pick.button.click(); await waitFor(() => txt(pick.button) === 'Remove', 2000); }
     }
+    if (cfg.verbose && outcome !== 'add') console.log(`   hits=${hits ? hits.length : 'none captured'} exact=${JSON.stringify((exact || []).map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
     return { id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: exact && exact[0] ? exact[0].name : '' };
   };
 
@@ -111,12 +121,18 @@
   };
 
   const run = async (opts = {}) => {
+    if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
+    if (typeof opts.status === 'string') opts.statuses = [opts.status];
+    if (opts.statuses === 'all') opts.statuses = null;
     Object.assign(cfg, opts);
     const items = (window.MFC_ITEMS || []).filter((i) => !cfg.statuses || cfg.statuses.includes(i.status));
+    console.log(`importing ${items.length} items (${cfg.statuses ? cfg.statuses.join('/') : 'all statuses'})`);
+    running = true;
     if (!items.length) throw new Error('window.MFC_ITEMS is empty: paste mfc-items.js first');
     let i = cfg.start ?? Number(localStorage.getItem('mfc_import_progress') || 0);
     stopFlag = false;
     let pending = 0;
+    try {
     for (; i < items.length && !stopFlag; i++) {
       const it = items[i];
       if (!it.jan) { log.push({ ...it, outcome: 'no-barcode' }); continue; }
@@ -129,6 +145,7 @@
       await sleep(cfg.delayMs);
     }
     if (pending) await commit();
+    } finally { running = false; }
     const added = log.filter((r) => r.outcome.startsWith('add')), failed = log.filter((r) => !r.outcome.startsWith('add'));
     console.log(`done: ${added.length} added, ${failed.length} not added${stopFlag ? ' (stopped)' : ''}`);
     console.table(failed.map((r) => ({ mfc: r.id, title: r.title, jan: r.jan, outcome: r.outcome })));
@@ -136,7 +153,7 @@
   };
 
   window.MFC_IMPORT = {
-    run, stop: () => { stopFlag = true; }, log, captures,
+    run, stop: () => { stopFlag = true; }, log, captures, last,
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };

@@ -13,16 +13,17 @@ Adds the items from a MyFigureCollection CSV export to a hobby.moe collection, f
    This writes `mfc-items.js` next to the CSV and copies it to the clipboard.
 3. On hobby.moe, logged in, open the collection you want to fill and open the browser console.
 4. Paste `mfc-items.js`, then paste `hobbymoe-import.js`.
-5. Run:
+5. Run one command at a time (pasting several lines at once runs them all, including `stop()`):
 
 ```js
-MFC_IMPORT.run({ start: 0 })                       // whole list; a stopped run resumes from where it was
-MFC_IMPORT.run({ start: 0, statuses: ['Owned'] })  // one MFC status only
+MFC_IMPORT.run()                      // Owned items; a stopped run resumes where it was
+MFC_IMPORT.run({ status: 'Wished' })  // or 'Ordered'; run({ statuses: 'all' }) for everything
 MFC_IMPORT.stop()
-copy(MFC_IMPORT.csv())                             // result table: mfc id, title, jan, outcome
+copy(MFC_IMPORT.csv())                // result table: mfc id, title, jan, outcome
+MFC_IMPORT.last                       // the last item's search hits and visible rows, for debugging
 ```
 
-Start with a short slice (`run({ start: 0 })` then `stop()` after a few) before letting it run through.
+Start with a few items, then `stop()`, before letting it run through.
 
 ## What it does per item
 
@@ -41,10 +42,11 @@ Outcomes in the result table:
 
 ## Knobs
 
-`run({ batch: 1, delayMs: 250, timeoutMs: 8000, statuses: null, start: null })`
+`run({ batch: 1, delayMs: 250, timeoutMs: 8000, statuses: ['Owned'], start: null, verbose: true })`
 
 - `batch` commits after this many selections. Raise it if selections survive across searches in the dialog.
 - `delayMs` pause between items. Keep it polite.
+- `verbose` prints the search hits and visible rows for every item that was not added.
 - Progress lives in `localStorage` under `mfc_import_progress`; `MFC_IMPORT.reset()` clears it.
 
 ## Status
