@@ -40,11 +40,11 @@
   const buttonsIn = (root, re) => [...root.querySelectorAll('button')].filter((b) => re.test(txt(b)));
   const pageAddItemsButton = () => buttonsIn(document, /^Add Items$/).find((b) => !b.closest('[role="dialog"]'));
   const searchInput = (d) => d.querySelector('input[placeholder^="Search"]');
-  const footer = (d) => ({
-    cancel: buttonsIn(d, /^Cancel$/)[0],
-    commit: buttonsIn(d, /^Add \d+ Items?$/)[0],
-    selected: (() => { const b = buttonsIn(d, /^Add \d+ Items?$/)[0]; return b ? Number(txt(b).match(/\d+/)[0]) : 0; })(),
-  });
+  const footer = (d) => {
+    const commit = buttonsIn(d, /^Add( \d+)? Items?$/).find((b) => b.closest('[role="dialog"]') === d);
+    const m = commit ? txt(commit).match(/\d+/) : null;
+    return { cancel: buttonsIn(d, /^Cancel$/)[0], commit, selected: m ? Number(m[0]) : (commit && !commit.disabled ? 1 : 0) };
+  };
   const rowButtons = (d) => buttonsIn(d, /^(Add|Remove)$/);
   const rowsOf = (d) => {
     const all = rowButtons(d);
@@ -107,7 +107,7 @@
     }
     if (pick) {
       if (pick.state === 'Remove') outcome = 'already-selected';
-      else { pick.button.click(); await waitFor(() => txt(pick.button) === 'Remove', 2000); }
+      else { pick.button.click(); await waitFor(() => footer(d).selected > 0, 1500); }
     }
     if (cfg.verbose && outcome !== 'add') console.log(`   hits=${hits ? hits.length : 'none captured'} exact=${JSON.stringify((exact || []).map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
     return { id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: exact && exact[0] ? exact[0].name : '' };
@@ -118,7 +118,8 @@
     const f = footer(d);
     if (f.selected > 0 && f.commit && !f.commit.disabled) {
       f.commit.click();
-      await waitFor(() => !openDialog() || footer(openDialog()).selected === 0);
+      const closed = await waitFor(() => !openDialog() || footer(openDialog()).selected === 0 ? true : null, 3000);
+      if (!closed) { const g = footer(openDialog()); if (g.commit && !g.commit.disabled) { g.commit.click(); await waitFor(() => !openDialog(), 3000); } }
     } else if (f.cancel) { f.cancel.click(); await waitFor(() => !openDialog(), 3000); }
     await sleep(cfg.delayMs);
   };
