@@ -146,7 +146,7 @@
   };
 
   // Remove every item from the collection on this page: first item's delete trigger, then "Remove Item" in the confirmation, repeat.
-  const clear = async ({ confirm = false, max = Infinity, manual = false } = {}) => {
+  const clear = async ({ confirm = false, max = Infinity, manual = false, removeText = /^(Remove Item|No longer owned)$/i } = {}) => {
     if (!confirm) throw new Error('this removes every item on this page: MFC_IMPORT.clear({ confirm: true })');
     if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
     running = true; stopFlag = false;
@@ -168,7 +168,14 @@
       }
       return null;
     };
-    const confirmDialog = () => document.querySelector('[role="alertdialog"][data-state="open"]');
+    const confirmDialog = () => document.querySelector('[role="alertdialog"][data-state="open"], [role="dialog"][data-state="open"]');
+    const confirmButton = (dlg) => { // named button if present, else the second button of the dialog's footer row
+      const named = buttonsIn(dlg, removeText)[0]; if (named) return named;
+      const rows = [...dlg.querySelectorAll('div')].filter((x) => [...x.children].filter((c) => c.tagName === 'BUTTON').length >= 2);
+      const row = rows[rows.length - 1]; if (!row) return null;
+      return [...row.children].filter((c) => c.tagName === 'BUTTON')[1] || null;
+    };
+    let announced = false;
     let n = 0;
     try {
       while (n < max && !stopFlag) {
@@ -176,8 +183,9 @@
         t.click();
         const dlg = await waitFor(confirmDialog, 3000);
         if (!dlg) { console.log('confirmation dialog did not open'); break; }
-        const btn = buttonsIn(dlg, /^Remove Item$/)[0];
-        if (!btn) { console.log('"Remove Item" button not found'); break; }
+        const btn = confirmButton(dlg);
+        if (!btn) { console.log('no confirm button found in the dialog'); break; }
+        if (!announced) { console.log(`confirming with the "${txt(btn)}" button`); announced = true; }
         btn.click();
         const gone = await waitFor(() => (!confirmDialog() && !document.contains(t)) ? true : null, cfg.timeoutMs);
         if (!gone) { console.log('item did not go away; stopping'); break; }
@@ -194,5 +202,5 @@
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT v13 ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v14 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();
