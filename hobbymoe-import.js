@@ -151,24 +151,33 @@
     if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
     running = true; stopFlag = false;
     const trigger = () => document.querySelector('button[data-slot="alert-dialog-trigger"][data-variant="destructive"]');
+    const hover = (el) => { for (const t of ['pointerover', 'mouseover', 'pointerenter', 'mouseenter']) el.dispatchEvent(new MouseEvent(t, { bubbles: t.endsWith('over'), cancelable: true, view: window })); };
+    const reveal = async () => { // the delete icons render only while an item is hovered
+      if (trigger()) return trigger();
+      for (const img of document.querySelectorAll('main img, img')) {
+        hover(img); if (img.parentElement) hover(img.parentElement);
+        const t = await waitFor(trigger, 300); if (t) return t;
+      }
+      return null;
+    };
     const confirmDialog = () => document.querySelector('[role="alertdialog"][data-state="open"]');
     let n = 0;
     try {
       while (n < max && !stopFlag) {
-        const t = trigger(); if (!t) break;
+        const t = await reveal(); if (!t) break;
         t.click();
         const dlg = await waitFor(confirmDialog, 3000);
         if (!dlg) { console.log('confirmation dialog did not open'); break; }
         const btn = buttonsIn(dlg, /^Remove Item$/)[0];
         if (!btn) { console.log('"Remove Item" button not found'); break; }
         btn.click();
-        const gone = await waitFor(() => (!confirmDialog() && trigger() !== t) ? true : null, cfg.timeoutMs);
+        const gone = await waitFor(() => (!confirmDialog() && !document.contains(t)) ? true : null, cfg.timeoutMs);
         if (!gone) { console.log('item did not go away; stopping'); break; }
         n++; if (n % 10 === 0) console.log(`removed ${n}`);
         await sleep(cfg.delayMs);
       }
     } finally { running = false; }
-    console.log(`removed ${n} item(s)${trigger() ? ', more remain (scroll or reload and run again)' : ''}`);
+    console.log(`removed ${n} item(s)${n === 0 ? ' (no delete icon appeared on any image; hover one item by hand and run again)' : ''}`);
     return n;
   };
 
