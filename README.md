@@ -36,7 +36,7 @@ Outcomes in the result table:
 |---|---|
 | `add` | selected and committed |
 | `not-found` | no item on the site with that barcode |
-| `adult-hidden` | the item exists but is flagged adult, and the dialog's search excludes adult items; add it by hand |
+| `adult-hidden?` | the item is flagged adult and the dialog showed no row for it; the dialog hides adult items until the account has an age set (`run({ skipAdult: true })` skips them up front) |
 | `other-type` | the item exists under a type the dialog does not list |
 | `already-in-collection?` | the item exists but the dialog showed no row for it (it hides items already in the collection) |
 | `no-rows-shown` | the item exists but the dialog showed nothing within the wait |

@@ -7,6 +7,7 @@
     batch: 1, delayMs: 150, searchMs: 500, timeoutMs: 4000, statuses: ['Owned'], start: null, verbose: true,
     searchUrl: 'https://search.hobby.moe/indexes/items/search',
     typeId: 'rh77ksk7spb166dtj2s5qnjbkn801k5s', // the item type the Add Items dialog searches (from its own request)
+    skipAdult: false, // true = do not try adult-flagged items (the dialog hides them until the account has an age set)
   };
   const log = [];
   const last = { jan: '', hits: [], rows: [] };
@@ -86,7 +87,7 @@
     Object.assign(last, { jan: item.jan, hits, rows: [] });
     const out = (outcome, hit) => ({ id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: hit ? hit.name : '' });
     if (!hits.length) return out('not-found');
-    const usable = hits.filter((h) => !h.adultItem && (!cfg.typeId || h.typeId === cfg.typeId));
+    const usable = hits.filter((h) => (!cfg.skipAdult || !h.adultItem) && (!cfg.typeId || h.typeId === cfg.typeId));
     if (!usable.length) return out(hits.some((h) => h.adultItem) ? 'adult-hidden' : 'other-type', hits[0]);
     const d = await ensureDialog();
     const rows = await typeAndWait(d, item.jan);
@@ -95,7 +96,7 @@
     for (const h of usable) { pick = rowFor(rows, h, item.title); if (pick) { var hit = h; break; } }
     if (!pick) {
       if (cfg.verbose) console.log(`   hits=${JSON.stringify(usable.map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
-      return out(rows.length ? 'already-in-collection?' : 'no-rows-shown', usable[0]);
+      return out(usable[0].adultItem ? 'adult-hidden?' : rows.length ? 'already-in-collection?' : 'no-rows-shown', usable[0]);
     }
     if (pick.state === 'Remove') return out('already-selected', hit);
     pick.button.click();
