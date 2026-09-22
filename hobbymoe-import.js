@@ -186,5 +186,5 @@
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v11 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();
