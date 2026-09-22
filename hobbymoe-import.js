@@ -9,6 +9,20 @@
   let stopFlag = false, running = false;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const txt = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+  const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // MFC title: "[Level] - Series - Character - Scale - Version (Maker)" -> segments; the character segment must match a row
+  const titleSegs = (title) => {
+    const t = String(title).replace(/^\[[^\]]*\]\s*-\s*/, '').replace(/\s*\([^)]*\)\s*$/, '');
+    return t.split(/\s+-\s+/).map(norm).filter((x) => x.length > 1);
+  };
+  const matchByTitle = (rows, title) => {
+    const segs = titleSegs(title); if (!segs.length) return { pick: null, top: [] };
+    const charSeg = segs.length > 1 ? segs[1] : segs[0];
+    const scored = rows.map((r) => { const n = norm(r.text); return { r, n: segs.filter((g) => n.includes(g)).length, ch: n.includes(charSeg) }; }).filter((x) => x.ch && x.n > 0);
+    const best = Math.max(0, ...scored.map((x) => x.n));
+    const top = scored.filter((x) => x.n === best);
+    return { pick: top.length === 1 ? top[0].r : null, top: top.map((x) => x.r.text.slice(0, 80)) };
+  };
 
   // --- capture the site's own search responses (fetch and XHR) so a row can be matched by barcode
   const captures = [];
@@ -72,9 +86,11 @@
 
   const search = async (d, jan) => {
     const t0 = Date.now();
+    const before = rowsOf(d).map((r) => r.text).join('|');
     setInput(searchInput(d), jan);
     const cap = await waitFor(() => captures.find((c) => c.at > t0 && (c.body.includes(jan) || c.url.includes(jan) || c.hits.some((h) => h.barcode === jan))), cfg.searchMs);
-    await waitFor(() => rowButtons(d).length > 0, cfg.searchMs);
+    await waitFor(() => { const now = rowsOf(d).map((r) => r.text).join('|'); return now && now !== before; }, cfg.searchMs);
+    await sleep(150);
     return cap ? cap.hits : null;
   };
 
@@ -102,8 +118,9 @@
     } else if (exact && exact.length === 0) {
       outcome = hits.length ? 'no-exact-barcode' : 'not-found';
     } else {
-      pick = rows.length === 1 ? rows[0] : null;
-      outcome = pick ? 'add (unverified: no search response captured)' : rows.length ? 'ambiguous-no-api' : 'not-found-or-added';
+      const m = matchByTitle(rows, item.title);
+      pick = m.pick || (rows.length === 1 ? rows[0] : null);
+      outcome = pick ? 'add' : rows.length ? (m.top.length > 1 ? 'ambiguous: ' + m.top.join(' | ') : 'no-title-match') : 'not-found-or-added';
     }
     if (pick) {
       if (pick.state === 'Remove') outcome = 'already-selected';

@@ -27,7 +27,7 @@ Start with a few items, then `stop()`, before letting it run through.
 
 ## What it does per item
 
-Opens the Add Items dialog, types the barcode into the search box, reads the site's own search response, clicks Add on the row whose barcode matches exactly, then clicks Add 1 Item. When nothing was selected it clicks Cancel.
+Opens the Add Items dialog, types the barcode into the search box, picks the row that matches the MFC title (series, character, scale, version), clicks its Add, then clicks Add 1 Item. When the site's search response can be read, the exact barcode hit is used instead. When nothing was selected it clicks Cancel.
 
 Outcomes in the result table:
 
@@ -37,6 +37,7 @@ Outcomes in the result table:
 | `already-in-collection?` | the search found the barcode but the site showed no row (it hides items already in the collection) |
 | `not-found` | no search hit |
 | `no-exact-barcode` | hits, but none with that exact barcode |
+| `no-title-match` | rows came back but none contained the MFC character name |
 | `ambiguous: …` | more than one item on the site shares the barcode; names listed, add by hand |
 | `no-barcode` | the MFC row has no barcode; search by title by hand |
 
