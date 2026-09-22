@@ -22,6 +22,7 @@ MFC_IMPORT.stop()
 copy(MFC_IMPORT.csv())                // result table: mfc id, title, jan, outcome
 MFC_IMPORT.last                       // the last item's search hits and visible rows, for debugging
 MFC_IMPORT.clear({ confirm: true })   // remove every item shown on this collection page
+MFC_IMPORT.clear({ confirm: true, manual: true })  // same, but you hover the items with the mouse
 ```
 
 Start with a few items, then `stop()`, before letting it run through.

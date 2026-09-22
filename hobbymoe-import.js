@@ -146,7 +146,7 @@
   };
 
   // Remove every item from the collection on this page: first item's delete trigger, then "Remove Item" in the confirmation, repeat.
-  const clear = async ({ confirm = false, max = Infinity } = {}) => {
+  const clear = async ({ confirm = false, max = Infinity, manual = false } = {}) => {
     if (!confirm) throw new Error('this removes every item on this page: MFC_IMPORT.clear({ confirm: true })');
     if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
     running = true; stopFlag = false;
@@ -154,9 +154,12 @@
     const hover = (el) => { for (const t of ['pointerover', 'mouseover', 'pointerenter', 'mouseenter']) el.dispatchEvent(new MouseEvent(t, { bubbles: t.endsWith('over'), cancelable: true, view: window })); };
     const reveal = async () => { // the delete icons render only while an item is hovered
       if (trigger()) return trigger();
-      for (const img of document.querySelectorAll('main img, img')) {
-        hover(img); if (img.parentElement) hover(img.parentElement);
-        const t = await waitFor(trigger, 300); if (t) return t;
+      if (manual) { console.log('hover an item with the mouse and hold still'); return waitFor(trigger, 60000); }
+      for (const img of document.querySelectorAll('img')) {
+        const card = img.closest('[class~="group"]') || img.parentElement;
+        const chain = []; for (let el = img; el && el !== card.parentElement; el = el.parentElement) chain.push(el);
+        for (const el of chain.reverse()) hover(el);
+        const t = await waitFor(trigger, 250); if (t) return t;
       }
       return null;
     };
@@ -177,7 +180,7 @@
         await sleep(cfg.delayMs);
       }
     } finally { running = false; }
-    console.log(`removed ${n} item(s)${n === 0 ? ' (no delete icon appeared on any image; hover one item by hand and run again)' : ''}`);
+    console.log(`removed ${n} item(s)${n === 0 && !manual ? ' (no delete icon appeared; try MFC_IMPORT.clear({ confirm: true, manual: true }) and hover an item yourself)' : ''}`);
     return n;
   };
 
@@ -186,5 +189,5 @@
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT v11 ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v12 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();
