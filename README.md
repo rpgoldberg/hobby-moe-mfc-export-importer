@@ -21,6 +21,7 @@ MFC_IMPORT.run({ status: 'Wished' })  // or 'Ordered'; run({ statuses: 'all' }) 
 MFC_IMPORT.stop()
 copy(MFC_IMPORT.csv())                // result table: mfc id, title, jan, outcome
 MFC_IMPORT.last                       // the last item's search hits and visible rows, for debugging
+MFC_IMPORT.clear({ confirm: true })   // remove every item shown on this collection page
 ```
 
 Start with a few items, then `stop()`, before letting it run through.

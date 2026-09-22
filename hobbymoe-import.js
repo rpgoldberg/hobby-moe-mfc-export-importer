@@ -144,8 +144,35 @@
     return log;
   };
 
+  // Remove every item from the collection on this page: first item's delete trigger, then "Remove Item" in the confirmation, repeat.
+  const clear = async ({ confirm = false, max = Infinity } = {}) => {
+    if (!confirm) throw new Error('this removes every item on this page: MFC_IMPORT.clear({ confirm: true })');
+    if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
+    running = true; stopFlag = false;
+    const trigger = () => document.querySelector('button[data-slot="alert-dialog-trigger"][data-variant="destructive"]');
+    const confirmDialog = () => document.querySelector('[role="alertdialog"][data-state="open"]');
+    let n = 0;
+    try {
+      while (n < max && !stopFlag) {
+        const t = trigger(); if (!t) break;
+        t.click();
+        const dlg = await waitFor(confirmDialog, 3000);
+        if (!dlg) { console.log('confirmation dialog did not open'); break; }
+        const btn = buttonsIn(dlg, /^Remove Item$/)[0];
+        if (!btn) { console.log('"Remove Item" button not found'); break; }
+        btn.click();
+        const gone = await waitFor(() => (!confirmDialog() && trigger() !== t) ? true : null, cfg.timeoutMs);
+        if (!gone) { console.log('item did not go away; stopping'); break; }
+        n++; if (n % 10 === 0) console.log(`removed ${n}`);
+        await sleep(cfg.delayMs);
+      }
+    } finally { running = false; }
+    console.log(`removed ${n} item(s)${trigger() ? ', more remain (scroll or reload and run again)' : ''}`);
+    return n;
+  };
+
   window.MFC_IMPORT = {
-    run, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, last, lookup,
+    run, clear, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, last, lookup,
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
