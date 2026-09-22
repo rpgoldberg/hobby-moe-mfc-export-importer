@@ -150,7 +150,12 @@
     if (!confirm) throw new Error('this removes every item on this page: MFC_IMPORT.clear({ confirm: true })');
     if (running) throw new Error('a run is already in progress; MFC_IMPORT.stop() first');
     running = true; stopFlag = false;
-    const trigger = () => document.querySelector('button[data-slot="alert-dialog-trigger"][data-variant="destructive"]');
+    const trigger = () => { // the per-item overlay (visible on hover by CSS only) holds edit + delete; delete opens the confirm dialog
+      const direct = document.querySelector('button[data-slot="alert-dialog-trigger"][data-variant="destructive"]'); if (direct) return direct;
+      const ov = document.querySelector('[class*="group-hover/inventory-item"]'); if (!ov) return null;
+      const bs = [...ov.querySelectorAll('button')];
+      return bs.find((x) => x.getAttribute('aria-haspopup') === 'dialog' || x.dataset.variant === 'destructive') || bs[bs.length - 1] || null;
+    };
     const hover = (el) => { for (const t of ['pointerover', 'mouseover', 'pointerenter', 'mouseenter']) el.dispatchEvent(new MouseEvent(t, { bubbles: t.endsWith('over'), cancelable: true, view: window })); };
     const reveal = async () => { // the delete icons render only while an item is hovered
       if (trigger()) return trigger();
@@ -189,5 +194,5 @@
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT v12 ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v13 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();
