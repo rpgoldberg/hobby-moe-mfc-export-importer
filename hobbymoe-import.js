@@ -130,9 +130,9 @@
     if (opts.statuses === 'all') opts.statuses = null;
     Object.assign(cfg, opts);
     const items = (window.MFC_ITEMS || []).filter((i) => !cfg.statuses || cfg.statuses.includes(i.status));
+    if (!items.length) throw new Error('window.MFC_ITEMS is empty: paste mfc-items.js first');
     console.log(`importing ${items.length} items (${cfg.statuses ? cfg.statuses.join('/') : 'all statuses'})`);
     running = true;
-    if (!items.length) throw new Error('window.MFC_ITEMS is empty: paste mfc-items.js first');
     let i = cfg.start ?? Number(localStorage.getItem('mfc_import_progress') || 0);
     stopFlag = false;
     let pending = 0;
@@ -157,7 +157,7 @@
   };
 
   window.MFC_IMPORT = {
-    run, stop: () => { stopFlag = true; }, log, captures, last,
+    run, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, captures, last,
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
