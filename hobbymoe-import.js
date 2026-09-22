@@ -3,7 +3,7 @@
 // 2. Be on the collection's page, logged in. 3. Paste this file. 4. MFC_IMPORT.run()  (Owned by default; run({ status: 'Wished' }) for another list)
 // Stop any time with MFC_IMPORT.stop(). Progress is in localStorage under 'mfc_import_progress'; run() resumes from it.
 (() => {
-  const cfg = { batch: 1, delayMs: 250, timeoutMs: 8000, statuses: ['Owned'], start: null, verbose: true };
+  const cfg = { batch: 1, delayMs: 150, searchMs: 500, timeoutMs: 4000, statuses: ['Owned'], start: null, verbose: true };
   const log = [];
   const last = { jan: '', hits: [], rows: [] };
   let stopFlag = false, running = false;
@@ -45,12 +45,15 @@
     commit: buttonsIn(d, /^Add \d+ Items?$/)[0],
     selected: (() => { const b = buttonsIn(d, /^Add \d+ Items?$/)[0]; return b ? Number(txt(b).match(/\d+/)[0]) : 0; })(),
   });
-  const resultsArea = (d) => searchInput(d)?.closest('.p-6')?.nextElementSibling || d;
-  const rowsOf = (d) => buttonsIn(resultsArea(d), /^(Add|Remove)$/).map((b) => {
-    let el = b; const area = resultsArea(d);
-    while (el.parentElement && el.parentElement !== area) el = el.parentElement; // the row = the direct child of the results area
-    return { button: b, row: el, text: txt(el), state: txt(b) };
-  });
+  const rowButtons = (d) => buttonsIn(d, /^(Add|Remove)$/);
+  const rowsOf = (d) => {
+    const all = rowButtons(d);
+    return all.map((b) => {
+      let el = b; // the row = the largest ancestor that holds only this one Add/Remove button
+      while (el.parentElement && el.parentElement !== d && all.filter((x) => el.parentElement.contains(x)).length === 1) el = el.parentElement;
+      return { button: b, row: el, text: txt(el), state: txt(b) };
+    });
+  };
   const waitFor = async (fn, ms = cfg.timeoutMs) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(100); } };
   const setInput = (input, value) => {
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -70,8 +73,8 @@
   const search = async (d, jan) => {
     const t0 = Date.now();
     setInput(searchInput(d), jan);
-    const cap = await waitFor(() => captures.find((c) => c.at > t0 && (c.body.includes(jan) || c.url.includes(jan) || c.hits.some((h) => h.barcode === jan))));
-    await waitFor(() => rowsOf(d).length > 0 || /no (items|results)/i.test(txt(resultsArea(d))), 2500);
+    const cap = await waitFor(() => captures.find((c) => c.at > t0 && (c.body.includes(jan) || c.url.includes(jan) || c.hits.some((h) => h.barcode === jan))), cfg.searchMs);
+    await waitFor(() => rowButtons(d).length > 0, cfg.searchMs);
     return cap ? cap.hits : null;
   };
 
@@ -90,7 +93,7 @@
     };
     let pick = null, outcome;
     if (exact && exact.length === 1) {
-      pick = findRow(exact[0]) || (rows.length === 1 ? rows[0] : null);
+      pick = (rows.length === 1 ? rows[0] : null) || findRow(exact[0]);
       outcome = pick ? 'add' : 'already-in-collection?';
     } else if (exact && exact.length > 1) {
       const vis = exact.map(findRow).filter(Boolean);

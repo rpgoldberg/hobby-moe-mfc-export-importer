@@ -42,10 +42,10 @@ Outcomes in the result table:
 
 ## Knobs
 
-`run({ batch: 1, delayMs: 250, timeoutMs: 8000, statuses: ['Owned'], start: null, verbose: true })`
+`run({ batch: 1, delayMs: 150, searchMs: 500, timeoutMs: 4000, statuses: ['Owned'], start: null, verbose: true })`
 
 - `batch` commits after this many selections. Raise it if selections survive across searches in the dialog.
-- `delayMs` pause between items. Keep it polite.
+- `delayMs` pause between items. `searchMs` is the most it waits for search results.
 - `verbose` prints the search hits and visible rows for every item that was not added.
 - Progress lives in `localStorage` under `mfc_import_progress`; `MFC_IMPORT.reset()` clears it.
 
