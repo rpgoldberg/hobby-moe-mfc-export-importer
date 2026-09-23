@@ -123,7 +123,7 @@
     for (const h of usable) { pick = rowFor(rows, h, item.title); if (pick) { var hit = h; break; } }
     if (!pick) {
       if (cfg.verbose) console.log(`   hits=${JSON.stringify(usable.map((h) => h.name))} rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`);
-      return out(usable[0].adultItem ? 'adult-hidden?' : rows.length ? 'already-in-collection?' : 'no-rows-shown', usable[0]);
+      return out(usable[0].adultItem ? 'adult-hidden?' : rows.length ? 'hit-not-in-rows' : 'no-rows-shown', usable[0]);
     }
     if (pick.state === 'Remove') return out('already-selected', hit);
     pick.button.click();
@@ -230,5 +230,5 @@
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT v15 ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v16 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();

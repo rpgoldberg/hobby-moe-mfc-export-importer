@@ -29,7 +29,7 @@ Start with a few items, then `stop()`, before letting it run through.
 
 ## What it does per item
 
-Looks the barcode up on the site's own search endpoint (the one the dialog uses), from inside the page. That endpoint wants the site's public search key; `run()` tries to find it in the page's scripts, or pass it yourself: `run({ searchKey: '...' })`, copied from the `authorization` header of any search request in the network tab (without the `Bearer ` prefix). Without a key it types the barcode into the dialog and picks the row from the MFC title instead. If exactly that barcode exists, is not flagged adult and is of the type the dialog lists, it opens the Add Items dialog, types the barcode, clicks Add on the row carrying the hit's name, then clicks Add 1 Item. When nothing was selected it clicks Cancel. Items that cannot be added are skipped without touching the dialog.
+Re-running over items already in the collection is harmless: the site keeps one copy. Looks the barcode up on the site's own search endpoint (the one the dialog uses), from inside the page. That endpoint wants the site's public search key; `run()` tries to find it in the page's scripts, or pass it yourself: `run({ searchKey: '...' })`, copied from the `authorization` header of any search request in the network tab (without the `Bearer ` prefix). Without a key it types the barcode into the dialog and picks the row from the MFC title instead. If exactly that barcode exists, is not flagged adult and is of the type the dialog lists, it opens the Add Items dialog, types the barcode, clicks Add on the row carrying the hit's name, then clicks Add 1 Item. When nothing was selected it clicks Cancel. Items that cannot be added are skipped without touching the dialog.
 
 Outcomes in the result table:
 
@@ -37,9 +37,9 @@ Outcomes in the result table:
 |---|---|
 | `add` | selected and committed |
 | `not-found` | no item on the site with that barcode |
-| `adult-hidden?` | the item is flagged adult and the dialog showed no row for it; the dialog hides adult items until the account has an age set (`run({ skipAdult: true })` skips them up front) |
+| `adult-hidden?` | the item is flagged adult on the site and the dialog's search never lists adult items, whatever the account's settings; add it another way (`run({ skipAdult: true })` skips them up front) |
 | `other-type` | the item exists under a type the dialog does not list |
-| `already-in-collection?` | the item exists but the dialog showed no row for it (it hides items already in the collection) |
+| `hit-not-in-rows` | the search found the barcode but the dialog's rows did not include it |
 | `no-rows-shown` | the item exists but the dialog showed nothing within the wait |
 | `no-barcode` | the MFC row has no barcode; search by title by hand |
 
