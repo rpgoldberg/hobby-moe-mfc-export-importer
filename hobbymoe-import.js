@@ -8,6 +8,7 @@
     searchUrl: 'https://search.hobby.moe/indexes/items/search',
     typeId: 'rh77ksk7spb166dtj2s5qnjbkn801k5s', // the item type the Add Items dialog searches (from its own request)
     skipAdult: false, // true = do not try adult-flagged items (the dialog hides them until the account has an age set)
+    searchKey: '', // the site's public search-only bearer key; found by findKey() or copied from a search request's authorization header
   };
   const log = [];
   const last = { jan: '', hits: [], rows: [] };
@@ -17,8 +18,21 @@
   const norm = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
   // --- the site's own search endpoint, called the way the dialog calls it (no auth header; the page origin is what gets it through)
+  const findKey = async () => { // scan the page's loaded scripts for the bearer key used against the search host
+    const urls = performance.getEntriesByType('resource').map((e) => e.name).filter((u) => /\.js(\?|$)/.test(u) && new URL(u).origin === location.origin);
+    const found = new Set();
+    for (const u of urls) {
+      let t = ''; try { t = await (await fetch(u)).text(); } catch (_) { continue; }
+      if (!t.includes('search.hobby.moe') && !/meili/i.test(t)) continue;
+      for (const m of t.matchAll(/["']([A-Za-z0-9_\-]{32,128})["']/g)) { const i = m.index; if (/search\.hobby\.moe|meili|apiKey|searchKey/i.test(t.slice(Math.max(0, i - 600), i + 200))) found.add(m[1]); }
+    }
+    const keys = [...found]; console.log('key candidates:', keys);
+    if (keys.length === 1) cfg.searchKey = keys[0];
+    return keys;
+  };
   const post = async (body) => {
-    const res = await fetch(cfg.searchUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const headers = { 'content-type': 'application/json' }; if (cfg.searchKey) headers.authorization = 'Bearer ' + cfg.searchKey;
+    const res = await fetch(cfg.searchUrl, { method: 'POST', headers, body: JSON.stringify(body) });
     const j = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(j.hits)) throw new Error('search ' + res.status + ' ' + (j.message || ''));
     return j.hits;
@@ -82,7 +96,20 @@
     return top.length === 1 ? top[0].r : null;
   };
 
+  const titleMatch = (rows, title) => rowFor(rows, { name: '\u0000' }, title);
+  const oneWithoutKey = async (item) => { // no search key: type the barcode and pick the row from the MFC title
+    const out = (outcome) => ({ id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: '' });
+    const d = await ensureDialog();
+    const rows = await typeAndWait(d, item.jan);
+    Object.assign(last, { jan: item.jan, hits: [], rows: rows.map((r) => r.text) });
+    const pick = rows.length === 1 ? rows[0] : titleMatch(rows, item.title);
+    if (!pick) { if (cfg.verbose) console.log(`   rows=${JSON.stringify(rows.map((r) => r.text.slice(0, 90)))}`); return out(rows.length ? 'no-title-match' : 'not-found-or-added'); }
+    if (pick.state === 'Remove') return out('already-selected');
+    pick.button.click(); await waitFor(() => footer(d).selected > 0, 1500);
+    return out('add');
+  };
   const one = async (item) => {
+    if (!cfg.searchKey) return oneWithoutKey(item);
     const hits = await lookup(item.jan);
     Object.assign(last, { jan: item.jan, hits, rows: [] });
     const out = (outcome, hit) => ({ id: item.id, title: item.title, jan: item.jan, status: item.status, outcome, hobbymoe: hit ? hit.name : '' });
@@ -122,6 +149,7 @@
     Object.assign(cfg, opts);
     const items = (window.MFC_ITEMS || []).filter((i) => !cfg.statuses || cfg.statuses.includes(i.status));
     if (!items.length) throw new Error('window.MFC_ITEMS is empty: paste mfc-items.js first');
+    if (!cfg.searchKey) { await findKey(); console.log(cfg.searchKey ? 'search key found; identifying by exact barcode' : 'no search key: identifying rows by title (pass searchKey: "..." from a search request\'s authorization header for exact barcode matching)'); }
     console.log(`importing ${items.length} items (${cfg.statuses ? cfg.statuses.join('/') : 'all statuses'})`);
     running = true; stopFlag = false;
     let i = cfg.start ?? Number(localStorage.getItem('mfc_import_progress') || 0), pending = 0;
@@ -198,9 +226,9 @@
   };
 
   window.MFC_IMPORT = {
-    run, clear, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, last, lookup,
+    run, clear, findKey, stop: () => { stopFlag = true; }, unlock: () => { running = false; }, log, last, lookup,
     reset: () => localStorage.removeItem('mfc_import_progress'),
     csv: () => ['mfc_id,title,jan,status,outcome,hobbymoe_name', ...log.map((r) => [r.id, r.title, r.jan, r.status, r.outcome, r.hobbymoe || ''].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))].join('\n'),
   };
-  console.log('MFC_IMPORT v14 ready. Next: MFC_IMPORT.run()   (one command per paste)');
+  console.log('MFC_IMPORT v15 ready. Next: MFC_IMPORT.run()   (one command per paste)');
 })();

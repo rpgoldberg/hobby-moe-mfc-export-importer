@@ -29,7 +29,7 @@ Start with a few items, then `stop()`, before letting it run through.
 
 ## What it does per item
 
-Looks the barcode up on the site's own search endpoint (the one the dialog uses), from inside the page. If exactly that barcode exists, is not flagged adult and is of the type the dialog lists, it opens the Add Items dialog, types the barcode, clicks Add on the row carrying the hit's name, then clicks Add 1 Item. When nothing was selected it clicks Cancel. Items that cannot be added are skipped without touching the dialog.
+Looks the barcode up on the site's own search endpoint (the one the dialog uses), from inside the page. That endpoint wants the site's public search key; `run()` tries to find it in the page's scripts, or pass it yourself: `run({ searchKey: '...' })`, copied from the `authorization` header of any search request in the network tab (without the `Bearer ` prefix). Without a key it types the barcode into the dialog and picks the row from the MFC title instead. If exactly that barcode exists, is not flagged adult and is of the type the dialog lists, it opens the Add Items dialog, types the barcode, clicks Add on the row carrying the hit's name, then clicks Add 1 Item. When nothing was selected it clicks Cancel. Items that cannot be added are skipped without touching the dialog.
 
 Outcomes in the result table:
 
